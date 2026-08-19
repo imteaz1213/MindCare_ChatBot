@@ -6,6 +6,7 @@ python-dotenv==1.0.1
 requests
 google-generativeai
 sentence-transformers
+torch
 # Optional -- only needed if you enable the corresponding generative backend
 # openai==1.40.0
 # anthropic==0.34.0
