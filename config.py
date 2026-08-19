@@ -9,9 +9,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 class Config:
 
-    VERIFY_TOKEN = "my_secret_token_123"  # আপনার পছন্দের টোকেন
-    WHATSAPP_TOKEN = "YOUR_ACCESS_TOKEN"   # Meta থেকে পাওয়া টোকেন
-    PHONE_NUMBER_ID = "YOUR_PHONE_NUMBER_ID" # Meta থেকে পাওয়া Phone Number ID
+    VERIFY_TOKEN = "imteaz"  
+    WHATSAPP_TOKEN = "EAAVsbzq8yD0BSXX35B8RsZBhRQY2TGVDRq22fDq4ZC7e4G5Q31QDMvEvUTPEeHdZBS4YtYbCMFEh1LAVo1hfIEuDLmJEPzFlgmjnAqFQJmYa0gf5tBmKzjZC6YYq2yc8IsygTc8fPEdEo3e4dMePeXBSxrn1WKh5GeiWvGh4Gcv4BbhadsZBOeFOFEXKMSBdHb482Xc7zIyH4xM9BmWDElZC5T9eAlE4MiZCDZCNkqJdu23S4Nk7Wuqgq8ABkZAXscLtJ3MZBZCBWe9BlpovyUubeCdPtFZCRQZDZD"   
+    PHONE_NUMBER_ID = "1333868569803384" 
    
     GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
    
