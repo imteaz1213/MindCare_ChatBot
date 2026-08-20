@@ -14,14 +14,7 @@ from utils.response_merger import merge_response
 def create_app():
     app = Flask(__name__)
 
-    # -------------------------------------------------------------
-    # LOAD CONFIGURATION
-    # -------------------------------------------------------------
     app.config.from_object(Config)
-
-    # -------------------------------------------------------------
-    # INITIALIZE ENGINES
-    # -------------------------------------------------------------
 
     rule_engine = RuleBasedEngine(
         Config.SAFETY_RULES_PATH
@@ -42,10 +35,6 @@ def create_app():
         retrieval_engine,
         generative_engine,
     )
-
-    # =============================================================
-    # HEALTH CHECK
-    # =============================================================
 
     @app.route("/", methods=["GET"])
     def home():
@@ -72,9 +61,6 @@ def create_app():
             "gemini_model": Config.GEMINI_MODEL,
         }), 200
 
-    # =============================================================
-    # CHAT API
-    # =============================================================
 
     @app.route("/chat", methods=["POST"])
     def chat():
@@ -109,26 +95,17 @@ def create_app():
 
         try:
 
-            # -----------------------------------------------------
-            # Preprocess
-            # -----------------------------------------------------
 
             processed = preprocess(
                 user_text,
                 source=source
             )
 
-            # -----------------------------------------------------
-            # Route through chatbot engine
-            # -----------------------------------------------------
 
             routed = orchestrator.route(
                 processed
             )
 
-            # -----------------------------------------------------
-            # Merge response
-            # -----------------------------------------------------
 
             result = merge_response(
                 routed,
@@ -148,9 +125,6 @@ def create_app():
                 "error": "Internal server error."
             }), 500
 
-    # =============================================================
-    # WHATSAPP CONFIGURATION
-    # =============================================================
 
     VERIFY_TOKEN = getattr(
         Config,
@@ -170,10 +144,6 @@ def create_app():
         ""
     )
 
-    # =============================================================
-    # WHATSAPP WEBHOOK VERIFICATION
-    # =============================================================
-
     @app.route(
         "/webhook",
         methods=["GET"]
@@ -192,9 +162,6 @@ def create_app():
             "hub.challenge"
         )
 
-        # ---------------------------------------------------------
-        # Meta verification
-        # ---------------------------------------------------------
 
         if (
             mode == "subscribe"
@@ -206,9 +173,6 @@ def create_app():
 
         return "Forbidden", 403
 
-    # =============================================================
-    # WHATSAPP INCOMING MESSAGE WEBHOOK
-    # =============================================================
 
     @app.route(
         "/webhook",
@@ -222,10 +186,6 @@ def create_app():
 
         try:
 
-            # -----------------------------------------------------
-            # Check WhatsApp object
-            # -----------------------------------------------------
-
             if body.get("object") != "whatsapp_business_account":
 
                 return jsonify({
@@ -237,9 +197,6 @@ def create_app():
                 []
             )
 
-            # -----------------------------------------------------
-            # Process all entries
-            # -----------------------------------------------------
 
             for entry in entries:
 
@@ -260,26 +217,16 @@ def create_app():
                         []
                     )
 
-                    # -------------------------------------------------
-                    # Status updates do not contain messages
-                    # -------------------------------------------------
 
                     if not messages:
                         continue
 
-                    # -------------------------------------------------
-                    # Process messages
-                    # -------------------------------------------------
 
                     for message in messages:
 
                         message_type = message.get(
                             "type"
                         )
-
-                        # -------------------------------------------------
-                        # Only process text messages
-                        # -------------------------------------------------
 
                         if message_type != "text":
 
@@ -308,9 +255,6 @@ def create_app():
 
                             continue
 
-                        # =============================================
-                        # CHATBOT PROCESSING
-                        # =============================================
 
                         processed = preprocess(
                             user_text,
@@ -326,9 +270,6 @@ def create_app():
                             output_mode="text"
                         )
 
-                        # -------------------------------------------------
-                        # Extract chatbot response
-                        # -------------------------------------------------
 
                         if isinstance(
                             merged_response,
@@ -351,10 +292,6 @@ def create_app():
                                 merged_response
                             )
 
-                        # -------------------------------------------------
-                        # Ensure response is string
-                        # -------------------------------------------------
-
                         bot_reply = str(
                             bot_reply
                         ).strip()
@@ -366,9 +303,6 @@ def create_app():
                                 "এই মুহূর্তে উত্তর দিতে পারছি না।"
                             )
 
-                        # =============================================
-                        # SEND RESPONSE TO WHATSAPP
-                        # =============================================
 
                         if (
                             WHATSAPP_TOKEN
@@ -405,9 +339,6 @@ def create_app():
                                 timeout=10,
                             )
 
-                            # -------------------------------------------------
-                            # Log WhatsApp API error
-                            # -------------------------------------------------
 
                             if not response.ok:
 
@@ -423,9 +354,6 @@ def create_app():
                                 "WhatsApp credentials are missing."
                             )
 
-            # -----------------------------------------------------
-            # Meta expects HTTP 200
-            # -----------------------------------------------------
 
             return jsonify({
                 "status": "EVENT_RECEIVED"
@@ -438,17 +366,10 @@ def create_app():
                 repr(e)
             )
 
-            # -----------------------------------------------------
-            # Return 200 to prevent unnecessary Meta retries
-            # -----------------------------------------------------
 
             return jsonify({
                 "status": "EVENT_RECEIVED"
             }), 200
-
-    # =============================================================
-    # RELOAD KNOWLEDGE BASE / SAFETY RULES
-    # =============================================================
 
     @app.route(
         "/reload-data",
