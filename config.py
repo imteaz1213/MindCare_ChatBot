@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv()  # reads .env into environment variables -- must run before Config reads them
+load_dotenv()  
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
