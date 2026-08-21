@@ -93,13 +93,17 @@ def create_app():
             routed = orchestrator.route(processed)
             merged_response = merge_response(routed, output_mode="text")
 
+            print("DEBUG Merged Response Output:", merged_response)
+
             bot_reply = None
             if isinstance(merged_response, dict):
                 bot_reply = (
-                    merged_response.get("response")
+                    merged_response.get("text")
+                    or merged_response.get("response")
                     or merged_response.get("answer")
-                    or merged_response.get("text")
                     or merged_response.get("message")
+                    or merged_response.get("content")
+                    or merged_response.get("result")
                 )
             elif isinstance(merged_response, str):
                 bot_reply = merged_response
@@ -138,7 +142,7 @@ def create_app():
                         response.text,
                     )
                 else:
-                    print(f"Message sent to WhatsApp user: {from_number}")
+                    print(f"Message successfully sent to WhatsApp ({from_number})")
             else:
                 print("WhatsApp credentials missing or test_user trigger detected.")
 
@@ -166,7 +170,7 @@ def create_app():
             from_number = None
             user_text = None
 
-            # ১. কাস্টম / সাধারণ টেস্ট পে-লোড ডিটেকশন ({'text': '...'})
+            # ১. কাস্টম / সাধারণ টেস্ট পে-লোড ডিটেকশন
             if "text" in body and isinstance(body["text"], str):
                 user_text = body["text"].strip()
                 from_number = body.get("from", "test_user")
@@ -186,11 +190,9 @@ def create_app():
                                 user_text = (text_data.get("body", "") or "").strip()
                                 break
 
-            # ভ্যালিড মেসেজ না থাকলে ইগনোর করবে
             if not user_text:
                 return jsonify({"status": "ignored", "reason": "No valid text"}), 200
 
-            # থ্রেড চালুর মাধ্যমে ব্যাকগ্রাউন্ডে রেসপন্স প্রসেস হবে
             threading.Thread(
                 target=process_whatsapp_message_async,
                 args=(from_number, user_text),
