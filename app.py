@@ -1,4 +1,6 @@
+import sys
 import threading
+import traceback
 from flask import Flask, jsonify, request
 import requests
 from config import Config
@@ -79,75 +81,98 @@ def create_app():
             return jsonify(result), 200
 
         except Exception as e:
-            print("Chat Error:", repr(e))
+            print("Chat Error:", repr(e), file=sys.stderr)
             return jsonify({"error": "Internal server error."}), 500
 
     VERIFY_TOKEN = getattr(Config, "VERIFY_TOKEN", "")
     WHATSAPP_TOKEN = getattr(Config, "WHATSAPP_TOKEN", "")
     PHONE_NUMBER_ID = getattr(Config, "PHONE_NUMBER_ID", "")
 
-    def process_whatsapp_message_async(from_number, user_text):
+    def process_whatsapp_message_async(app_ctx, from_number, user_text):
         """ব্যাকগ্রাউন্ডে মেসেজ প্রসেস এবং হোয়াটসঅ্যাপে রেসপন্স সেন্ড করে"""
-        try:
-            processed = preprocess(user_text, source="whatsapp")
-            routed = orchestrator.route(processed)
-            merged_response = merge_response(routed, output_mode="text")
-
-            print("DEBUG Merged Response Output:", merged_response)
-
-            bot_reply = None
-            if isinstance(merged_response, dict):
-                bot_reply = (
-                    merged_response.get("text")
-                    or merged_response.get("response")
-                    or merged_response.get("answer")
-                    or merged_response.get("message")
-                    or merged_response.get("content")
-                    or merged_response.get("result")
-                )
-            elif isinstance(merged_response, str):
-                bot_reply = merged_response
-
-            bot_reply = (
-                str(bot_reply).strip()
-                if bot_reply
-                else "দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না।"
-            )
-
-            print(f"PROCESSED REPLY FOR {from_number}: {bot_reply}")
-
-            if WHATSAPP_TOKEN and PHONE_NUMBER_ID and from_number != "test_user":
-                whatsapp_url = (
-                    f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-                )
-                headers = {
-                    "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-                    "Content-Type": "application/json",
-                }
-                payload = {
-                    "messaging_product": "whatsapp",
-                    "to": from_number,
-                    "type": "text",
-                    "text": {"body": bot_reply},
-                }
-
-                response = requests.post(
-                    whatsapp_url, json=payload, headers=headers, timeout=10
+        with app_ctx:
+            try:
+                print(
+                    f"START PROCESSING FOR: {from_number} -> Text: {user_text}",
+                    flush=True,
                 )
 
-                if not response.ok:
-                    print(
-                        "WhatsApp API Error:",
-                        response.status_code,
-                        response.text,
+                processed = preprocess(user_text, source="whatsapp")
+                routed = orchestrator.route(processed)
+                merged_response = merge_response(routed, output_mode="text")
+
+                print(
+                    "DEBUG Merged Response Output:",
+                    merged_response,
+                    flush=True,
+                )
+
+                bot_reply = None
+                if isinstance(merged_response, dict):
+                    bot_reply = (
+                        merged_response.get("text")
+                        or merged_response.get("response")
+                        or merged_response.get("answer")
+                        or merged_response.get("message")
+                        or merged_response.get("content")
+                        or merged_response.get("result")
                     )
-                else:
-                    print(f"Message successfully sent to WhatsApp ({from_number})")
-            else:
-                print("WhatsApp credentials missing or test_user trigger detected.")
+                elif isinstance(merged_response, str):
+                    bot_reply = merged_response
 
-        except Exception as e:
-            print("Async Processing Error:", repr(e))
+                bot_reply = (
+                    str(bot_reply).strip()
+                    if bot_reply
+                    else "দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না।"
+                )
+
+                print(
+                    f"PROCESSED REPLY FOR {from_number}: {bot_reply}",
+                    flush=True,
+                )
+
+                if (
+                    WHATSAPP_TOKEN
+                    and PHONE_NUMBER_ID
+                    and from_number != "test_user"
+                ):
+                    whatsapp_url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
+                    headers = {
+                        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+                        "Content-Type": "application/json",
+                    }
+                    payload = {
+                        "messaging_product": "whatsapp",
+                        "to": from_number,
+                        "type": "text",
+                        "text": {"body": bot_reply},
+                    }
+
+                    response = requests.post(
+                        whatsapp_url, json=payload, headers=headers, timeout=10
+                    )
+
+                    if not response.ok:
+                        print(
+                            "WhatsApp API Error:",
+                            response.status_code,
+                            response.text,
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            f"Message successfully sent to WhatsApp ({from_number})",
+                            flush=True,
+                        )
+                else:
+                    print(
+                        "WhatsApp credentials missing or test_user trigger detected.",
+                        flush=True,
+                    )
+
+            except Exception as e:
+                print("Async Processing Error:", repr(e), flush=True)
+                traceback.print_exc()
 
     @app.route("/webhook", methods=["GET"])
     def verify_webhook():
@@ -165,7 +190,7 @@ def create_app():
         body = request.get_json(silent=True) or {}
 
         try:
-            print("DEBUG Webhook Body:", body)
+            print("DEBUG Webhook Body:", body, flush=True)
 
             from_number = None
             user_text = None
@@ -187,21 +212,28 @@ def create_app():
                             if message.get("type") == "text":
                                 from_number = message.get("from")
                                 text_data = message.get("text", {})
-                                user_text = (text_data.get("body", "") or "").strip()
+                                user_text = (
+                                    text_data.get("body", "") or ""
+                                ).strip()
                                 break
 
             if not user_text:
-                return jsonify({"status": "ignored", "reason": "No valid text"}), 200
+                return (
+                    jsonify({"status": "ignored", "reason": "No valid text"}),
+                    200,
+                )
 
+            # অ্যাপ কন্টেক্সট পাস করে থ্রেড চালু করা
+            app_ctx = app.app_context()
             threading.Thread(
                 target=process_whatsapp_message_async,
-                args=(from_number, user_text),
+                args=(app_ctx, from_number, user_text),
             ).start()
 
             return jsonify({"status": "EVENT_RECEIVED"}), 200
 
         except Exception as e:
-            print("WhatsApp Webhook Error:", repr(e))
+            print("WhatsApp Webhook Error:", repr(e), flush=True)
             return jsonify({"status": "EVENT_RECEIVED"}), 200
 
     @app.route("/reload-data", methods=["POST"])
@@ -220,7 +252,7 @@ def create_app():
             )
 
         except Exception as e:
-            print("Reload Error:", repr(e))
+            print("Reload Error:", repr(e), flush=True)
             return (
                 jsonify({
                     "status": "error",
