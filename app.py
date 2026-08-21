@@ -14,16 +14,10 @@ from utils.response_merger import merge_response
 
 def create_app():
 
-    # =========================================================
-    # FLASK APP
-    # =========================================================
 
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # =========================================================
-    # INITIALIZE ENGINES
-    # =========================================================
 
     rule_engine = RuleBasedEngine(
         Config.SAFETY_RULES_PATH
@@ -39,9 +33,6 @@ def create_app():
         gemini_model=Config.GEMINI_MODEL,
     )
 
-    # =========================================================
-    # ORCHESTRATOR
-    # =========================================================
 
     orchestrator = Orchestrator(
         rule_engine=rule_engine,
@@ -49,9 +40,6 @@ def create_app():
         generative_engine=generative_engine,
     )
 
-    # =========================================================
-    # WHATSAPP CONFIGURATION
-    # =========================================================
 
     VERIFY_TOKEN = getattr(
         Config,
@@ -77,15 +65,9 @@ def create_app():
         "v23.0"
     )
 
-    # =========================================================
-    # PROCESSED MESSAGE IDS
-    # =========================================================
 
     processed_message_ids = set()
 
-    # =========================================================
-    # HOME
-    # =========================================================
 
     @app.route("/", methods=["GET"])
     def home():
@@ -99,9 +81,6 @@ def create_app():
             "health_endpoint": "/health"
         }), 200
 
-    # =========================================================
-    # HEALTH
-    # =========================================================
 
     @app.route("/health", methods=["GET"])
     def health():
@@ -123,9 +102,7 @@ def create_app():
             )
         }), 200
 
-    # =========================================================
-    # NORMAL CHAT API
-    # =========================================================
+   
 
     @app.route("/chat", methods=["POST"])
     def chat():
@@ -156,17 +133,6 @@ def create_app():
 
         try:
 
-            print("\n========================================")
-            print("              CHAT REQUEST")
-            print("========================================")
-
-            print("User Text:")
-            print(user_text)
-
-            # -------------------------------------------------
-            # PREPROCESS
-            # -------------------------------------------------
-
             processed = preprocess(
                 user_text,
                 source=source
@@ -175,30 +141,14 @@ def create_app():
             print("\n[PREPROCESS]")
             print(processed)
 
-            # -------------------------------------------------
-            # ORCHESTRATOR
-            # -------------------------------------------------
-
             routed = orchestrator.route(
                 processed
             )
-
-            print("\n[ORCHESTRATOR]")
-            print(routed)
-
-            # -------------------------------------------------
-            # MERGE
-            # -------------------------------------------------
 
             result = merge_response(
                 routed,
                 output_mode=output_mode
             )
-
-            print("\n[FINAL RESPONSE]")
-            print(result)
-
-            print("========================================\n")
 
             return jsonify(
                 result
@@ -206,26 +156,10 @@ def create_app():
 
         except Exception as e:
 
-            print("\n========== CHAT ERROR ==========")
-
-            print(
-                "Error:",
-                repr(e)
-            )
-
-            traceback.print_exc()
-
-            print(
-                "================================\n"
-            )
-
             return jsonify({
                 "error": "Internal server error."
             }), 500
 
-    # =========================================================
-    # WHATSAPP WEBHOOK VERIFICATION
-    # =========================================================
 
     @app.route("/webhook", methods=["GET"])
     def verify_webhook():
@@ -242,23 +176,6 @@ def create_app():
             "hub.challenge"
         )
 
-        print("\n========================================")
-        print("       WHATSAPP WEBHOOK VERIFY")
-        print("========================================")
-
-        print("Mode:", mode)
-        print(
-            "Token received:",
-            bool(token)
-        )
-        print(
-            "Challenge:",
-            challenge
-        )
-
-        # -----------------------------------------------------
-        # Verify Meta Request
-        # -----------------------------------------------------
 
         if (
             mode == "subscribe"
@@ -279,9 +196,6 @@ def create_app():
 
         return "Forbidden", 403
 
-    # =========================================================
-    # WHATSAPP WEBHOOK MESSAGE
-    # =========================================================
 
     @app.route("/webhook", methods=["POST"])
     def whatsapp_webhook():
@@ -290,18 +204,6 @@ def create_app():
             silent=True
         )
 
-        print("\n\n========================================")
-        print("         WHATSAPP WEBHOOK")
-        print("========================================")
-
-        print("Webhook Body:")
-        print(body)
-
-        print("========================================")
-
-        # =====================================================
-        # VALIDATE BODY
-        # =====================================================
 
         if not body:
 
@@ -315,9 +217,6 @@ def create_app():
 
         try:
 
-            # =================================================
-            # CHECK META OBJECT
-            # =================================================
 
             if body.get(
                 "object"
@@ -332,9 +231,6 @@ def create_app():
                     "status": "IGNORED"
                 }), 200
 
-            # =================================================
-            # ENTRIES
-            # =================================================
 
             entries = body.get(
                 "entry",
@@ -351,9 +247,6 @@ def create_app():
                     "status": "EVENT_RECEIVED"
                 }), 200
 
-            # =================================================
-            # ENTRY LOOP
-            # =================================================
 
             for entry in entries:
 
@@ -370,10 +263,6 @@ def create_app():
 
                     continue
 
-                # =============================================
-                # CHANGE LOOP
-                # =============================================
-
                 for change in changes:
 
                     field = change.get(
@@ -385,9 +274,6 @@ def create_app():
                         field
                     )
 
-                    # -------------------------------------------------
-                    # Only messages event
-                    # -------------------------------------------------
 
                     if field != "messages":
 
@@ -412,9 +298,6 @@ def create_app():
 
                         continue
 
-                    # =============================================
-                    # STATUS EVENTS
-                    # =============================================
 
                     statuses = value.get(
                         "statuses",
@@ -439,9 +322,6 @@ def create_app():
 
                         continue
 
-                    # =============================================
-                    # MESSAGES
-                    # =============================================
 
                     messages = value.get(
                         "messages",
@@ -457,40 +337,12 @@ def create_app():
 
                         continue
 
-                    # =============================================
-                    # MESSAGE LOOP
-                    # =============================================
 
                     for message in messages:
-
-                        print(
-                            "\n----------------------------------------"
-                        )
-
-                        print(
-                            "PROCESSING MESSAGE"
-                        )
-
-                        print(
-                            "----------------------------------------"
-                        )
-
-                        # -----------------------------------------
-                        # MESSAGE ID
-                        # -----------------------------------------
 
                         message_id = message.get(
                             "id"
                         )
-
-                        print(
-                            "Message ID:",
-                            message_id
-                        )
-
-                        # -----------------------------------------
-                        # DUPLICATE CHECK
-                        # -----------------------------------------
 
                         if message_id:
 
@@ -510,22 +362,10 @@ def create_app():
                                 message_id
                             )
 
-                        # -----------------------------------------
-                        # MESSAGE TYPE
-                        # -----------------------------------------
-
                         message_type = message.get(
                             "type"
                         )
 
-                        print(
-                            "Message Type:",
-                            message_type
-                        )
-
-                        # -----------------------------------------
-                        # ONLY TEXT
-                        # -----------------------------------------
 
                         if message_type != "text":
 
@@ -536,9 +376,6 @@ def create_app():
 
                             continue
 
-                        # -----------------------------------------
-                        # SENDER
-                        # -----------------------------------------
 
                         from_number = message.get(
                             "from"
@@ -558,9 +395,6 @@ def create_app():
 
                             continue
 
-                        # -----------------------------------------
-                        # TEXT
-                        # -----------------------------------------
 
                         text_data = message.get(
                             "text",
@@ -599,17 +433,6 @@ def create_app():
 
                             continue
 
-                        # =================================================
-                        # CHATBOT PIPELINE
-                        # =================================================
-
-                        print(
-                            "\n========== CHATBOT PIPELINE =========="
-                        )
-
-                        # -------------------------------------------------
-                        # 1. PREPROCESS
-                        # -------------------------------------------------
 
                         processed = preprocess(
                             user_text,
@@ -620,52 +443,20 @@ def create_app():
                             "\n[1] PREPROCESSED INPUT"
                         )
 
-                        print(
-                            processed
-                        )
-
-                        # -------------------------------------------------
-                        # 2. ORCHESTRATOR
-                        # -------------------------------------------------
+                      
 
                         routed = orchestrator.route(
                             processed
                         )
 
-                        print(
-                            "\n[2] ORCHESTRATOR RESULT"
-                        )
-
-                        print(
-                            routed
-                        )
-
-                        # -------------------------------------------------
-                        # 3. MERGE RESPONSE
-                        # -------------------------------------------------
 
                         merged_response = merge_response(
                             routed,
                             output_mode="text"
                         )
 
-                        print(
-                            "\n[3] MERGED RESPONSE"
-                        )
-
-                        print(
-                            merged_response
-                        )
-
-                        # =================================================
-                        # EXTRACT BOT RESPONSE
-                        # =================================================
 
                         bot_reply = ""
-
-                        # -------------------------------------------------
-                        # Dictionary
-                        # -------------------------------------------------
 
                         if isinstance(
                             merged_response,
@@ -692,9 +483,6 @@ def create_app():
                                 ""
                             )
 
-                        # -------------------------------------------------
-                        # String
-                        # -------------------------------------------------
 
                         elif isinstance(
                             merged_response,
@@ -709,9 +497,6 @@ def create_app():
                             bot_reply
                         ).strip()
 
-                        # =================================================
-                        # FALLBACK TO ORCHESTRATOR
-                        # =================================================
 
                         if not bot_reply:
 
@@ -731,9 +516,6 @@ def create_app():
                                     ) or ""
                                 ).strip()
 
-                        # =================================================
-                        # FINAL FALLBACK
-                        # =================================================
 
                         if not bot_reply:
 
@@ -742,17 +524,6 @@ def create_app():
                                 "উত্তর দিতে পারছি না।"
                             )
 
-                        print(
-                            "\n[4] FINAL BOT RESPONSE"
-                        )
-
-                        print(
-                            bot_reply
-                        )
-
-                        # =================================================
-                        # WHATSAPP CONFIG CHECK
-                        # =================================================
 
                         if not WHATSAPP_TOKEN:
 
@@ -772,19 +543,11 @@ def create_app():
 
                             continue
 
-                        # =================================================
-                        # WHATSAPP API URL
-                        # =================================================
-
                         whatsapp_url = (
                             "https://graph.facebook.com/"
                             f"{WHATSAPP_API_VERSION}/"
                             f"{PHONE_NUMBER_ID}/messages"
                         )
-
-                        # =================================================
-                        # HEADERS
-                        # =================================================
 
                         headers = {
                             "Authorization":
@@ -794,9 +557,6 @@ def create_app():
                                 "application/json"
                         }
 
-                        # =================================================
-                        # PAYLOAD
-                        # =================================================
 
                         payload = {
                             "messaging_product":
@@ -820,43 +580,11 @@ def create_app():
                             }
                         }
 
-                        print(
-                            "\n========== WHATSAPP SEND =========="
-                        )
-
-                        print(
-                            "URL:",
-                            whatsapp_url
-                        )
-
-                        print(
-                            "Recipient:",
-                            from_number
-                        )
-
-                        # =================================================
-                        # SEND
-                        # =================================================
-
                         response = requests.post(
                             whatsapp_url,
                             headers=headers,
                             json=payload,
                             timeout=15
-                        )
-
-                        # =================================================
-                        # RESPONSE
-                        # =================================================
-
-                        print(
-                            "Status Code:",
-                            response.status_code
-                        )
-
-                        print(
-                            "Response:",
-                            response.text
                         )
 
                         if response.ok:
@@ -887,9 +615,6 @@ def create_app():
                             "===================================="
                         )
 
-            # =================================================
-            # ACKNOWLEDGE META
-            # =================================================
 
             print(
                 "\n[SUCCESS] "
@@ -902,36 +627,10 @@ def create_app():
 
         except Exception as e:
 
-            print(
-                "\n========================================"
-            )
-
-            print(
-                "       WHATSAPP WEBHOOK ERROR"
-            )
-
-            print(
-                "========================================"
-            )
-
-            print(
-                "Error:",
-                repr(e)
-            )
-
-            traceback.print_exc()
-
-            print(
-                "========================================"
-            )
-
             return jsonify({
                 "status": "EVENT_RECEIVED"
             }), 200
 
-    # =========================================================
-    # RELOAD DATA
-    # =========================================================
 
     @app.route("/reload-data", methods=["POST"])
     def reload_data():
@@ -963,42 +662,16 @@ def create_app():
 
         except Exception as e:
 
-            print(
-                "\n========== RELOAD ERROR =========="
-            )
-
-            print(
-                repr(e)
-            )
-
-            traceback.print_exc()
-
-            print(
-                "=================================="
-            )
-
             return jsonify({
                 "status": "error",
                 "message": "Failed to reload data."
             }), 500
 
-    # =========================================================
-    # RETURN APP
-    # =========================================================
-
     return app
 
 
-# =============================================================
-# CREATE APP
-# =============================================================
-
 app = create_app()
 
-
-# =============================================================
-# RUN
-# =============================================================
 
 if __name__ == "__main__":
 
