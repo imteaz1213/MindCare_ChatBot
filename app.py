@@ -1,14 +1,13 @@
-import sys
-import threading
-import traceback
-from flask import Flask, jsonify, request
 import requests
+
+from flask import Flask, request, jsonify
+
 from config import Config
+from nlp.preprocessing import preprocess
+from engines.rule_engine import RuleBasedEngine
+from engines.retrieval_engine import RetrievalEngine
 from engines.generative_engine import GenerativeEngine
 from engines.orchestrator import Orchestrator
-from engines.retrieval_engine import RetrievalEngine
-from engines.rule_engine import RuleBasedEngine
-from nlp.preprocessing import preprocess
 from utils.response_merger import merge_response
 
 
@@ -17,7 +16,9 @@ def create_app():
 
     app.config.from_object(Config)
 
-    rule_engine = RuleBasedEngine(Config.SAFETY_RULES_PATH)
+    rule_engine = RuleBasedEngine(
+        Config.SAFETY_RULES_PATH
+    )
 
     retrieval_engine = RetrievalEngine(
         Config.KNOWLEDGE_BASE_PATH,
@@ -37,238 +38,386 @@ def create_app():
 
     @app.route("/", methods=["GET"])
     def home():
-        return (
-            jsonify({
-                "status": "ok",
-                "message": "Mind Care Chatbot API is running",
-                "service": "Flask API",
-                "whatsapp_webhook": "/webhook",
-                "chat_endpoint": "/chat",
-                "health_endpoint": "/health",
-            }),
-            200,
-        )
+        return jsonify({
+            "status": "ok",
+            "message": "Mind Care Chatbot API is running",
+            "service": "Flask API",
+            "whatsapp_webhook": "/webhook",
+            "chat_endpoint": "/chat",
+            "health_endpoint": "/health",
+        }), 200
 
     @app.route("/health", methods=["GET"])
     def health():
-        return (
-            jsonify({
-                "status": "ok",
-                "safety_rules_loaded": len(rule_engine.rules),
-                "knowledge_base_loaded": len(retrieval_engine.entries),
-                "gemini_enabled": bool(Config.GEMINI_API_KEY),
-                "gemini_model": Config.GEMINI_MODEL,
-            }),
-            200,
-        )
+        return jsonify({
+            "status": "ok",
+            "safety_rules_loaded": len(rule_engine.rules),
+            "knowledge_base_loaded": len(
+                retrieval_engine.entries
+            ),
+            "gemini_enabled": bool(
+                Config.GEMINI_API_KEY
+            ),
+            "gemini_model": Config.GEMINI_MODEL,
+        }), 200
+
 
     @app.route("/chat", methods=["POST"])
     def chat():
-        body = request.get_json(silent=True) or {}
 
-        user_text = (body.get("text") or "").strip()
-        source = body.get("source", "text")
-        output_mode = body.get("output_mode", "text")
+        body = request.get_json(
+            silent=True
+        ) or {}
+
+        user_text = (
+            body.get("text") or ""
+        ).strip()
+
+        source = body.get(
+            "source",
+            "text"
+        )
+
+        output_mode = body.get(
+            "output_mode",
+            "text"
+        )
+
 
         if not user_text:
-            return jsonify({"error": "Field 'text' is required."}), 400
+
+            return jsonify({
+                "error": "Field 'text' is required."
+            }), 400
 
         try:
-            processed = preprocess(user_text, source=source)
-            routed = orchestrator.route(processed)
-            result = merge_response(routed, output_mode=output_mode)
+
+
+            processed = preprocess(
+                user_text,
+                source=source
+            )
+
+
+            routed = orchestrator.route(
+                processed
+            )
+
+
+            result = merge_response(
+                routed,
+                output_mode=output_mode
+            )
 
             return jsonify(result), 200
 
         except Exception as e:
-            print("Chat Error:", repr(e), file=sys.stderr)
-            return jsonify({"error": "Internal server error."}), 500
 
-    VERIFY_TOKEN = getattr(Config, "VERIFY_TOKEN", "")
-    WHATSAPP_TOKEN = getattr(Config, "WHATSAPP_TOKEN", "")
-    PHONE_NUMBER_ID = getattr(Config, "PHONE_NUMBER_ID", "")
+            print(
+                "Chat Error:",
+                repr(e)
+            )
 
-    def process_whatsapp_message_async(app_ctx, from_number, user_text):
-        """ব্যাকগ্রাউন্ডে মেসেজ প্রসেস এবং হোয়াটসঅ্যাপে রেসপন্স সেন্ড করে"""
-        with app_ctx:
-            try:
-                print(
-                    f"START PROCESSING FOR: {from_number} -> Text: {user_text}",
-                    flush=True,
-                )
+            return jsonify({
+                "error": "Internal server error."
+            }), 500
 
-                processed = preprocess(user_text, source="whatsapp")
-                routed = orchestrator.route(processed)
-                merged_response = merge_response(routed, output_mode="text")
 
-                print(
-                    "DEBUG Merged Response Output:",
-                    merged_response,
-                    flush=True,
-                )
+    VERIFY_TOKEN = getattr(
+        Config,
+        "VERIFY_TOKEN",
+        ""
+    )
 
-                bot_reply = None
-                if isinstance(merged_response, dict):
-                    bot_reply = (
-                        merged_response.get("text")
-                        or merged_response.get("response")
-                        or merged_response.get("answer")
-                        or merged_response.get("message")
-                        or merged_response.get("content")
-                        or merged_response.get("result")
-                    )
-                elif isinstance(merged_response, str):
-                    bot_reply = merged_response
+    WHATSAPP_TOKEN = getattr(
+        Config,
+        "WHATSAPP_TOKEN",
+        ""
+    )
 
-                bot_reply = (
-                    str(bot_reply).strip()
-                    if bot_reply
-                    else "দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না।"
-                )
+    PHONE_NUMBER_ID = getattr(
+        Config,
+        "PHONE_NUMBER_ID",
+        ""
+    )
 
-                print(
-                    f"PROCESSED REPLY FOR {from_number}: {bot_reply}",
-                    flush=True,
-                )
-
-                if (
-                    WHATSAPP_TOKEN
-                    and PHONE_NUMBER_ID
-                    and from_number != "test_user"
-                ):
-                    whatsapp_url = f"https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages"
-                    headers = {
-                        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-                        "Content-Type": "application/json",
-                    }
-                    payload = {
-                        "messaging_product": "whatsapp",
-                        "to": from_number,
-                        "type": "text",
-                        "text": {"body": bot_reply},
-                    }
-
-                    response = requests.post(
-                        whatsapp_url, json=payload, headers=headers, timeout=10
-                    )
-
-                    if not response.ok:
-                        print(
-                            "WhatsApp API Error:",
-                            response.status_code,
-                            response.text,
-                            flush=True,
-                        )
-                    else:
-                        print(
-                            f"Message successfully sent to WhatsApp ({from_number})",
-                            flush=True,
-                        )
-                else:
-                    print(
-                        "WhatsApp credentials missing or test_user trigger detected.",
-                        flush=True,
-                    )
-
-            except Exception as e:
-                print("Async Processing Error:", repr(e), flush=True)
-                traceback.print_exc()
-
-    @app.route("/webhook", methods=["GET"])
+    @app.route(
+        "/webhook",
+        methods=["GET"]
+    )
     def verify_webhook():
-        mode = request.args.get("hub.mode")
-        token = request.args.get("hub.verify_token")
-        challenge = request.args.get("hub.challenge")
 
-        if mode == "subscribe" and token and token == VERIFY_TOKEN:
+        mode = request.args.get(
+            "hub.mode"
+        )
+
+        token = request.args.get(
+            "hub.verify_token"
+        )
+
+        challenge = request.args.get(
+            "hub.challenge"
+        )
+
+
+        if (
+            mode == "subscribe"
+            and token
+            and token == VERIFY_TOKEN
+        ):
+
             return challenge, 200
 
         return "Forbidden", 403
 
-    @app.route("/webhook", methods=["POST"])
+
+    @app.route(
+        "/webhook",
+        methods=["POST"]
+    )
     def whatsapp_webhook():
-        body = request.get_json(silent=True) or {}
+
+        body = request.get_json(
+            silent=True
+        ) or {}
 
         try:
-            print("DEBUG Webhook Body:", body, flush=True)
+          
 
-            from_number = None
-            user_text = None
+            entries = body.get(
+                "entry",
+                []
+            )
 
-            # ১. কাস্টম / সাধারণ টেস্ট পে-লোড ডিটেকশন
-            if "text" in body and isinstance(body["text"], str):
-                user_text = body["text"].strip()
-                from_number = body.get("from", "test_user")
 
-            # ২. স্ট্যান্ডার্ড Meta WhatsApp Cloud API পে-লোড ডিটেকশন
-            elif body.get("object") == "whatsapp_business_account":
-                entries = body.get("entry", [])
-                for entry in entries:
-                    for change in entry.get("changes", []):
-                        value = change.get("value", {})
-                        messages = value.get("messages", [])
+            for entry in entries:
 
-                        for message in messages:
-                            if message.get("type") == "text":
-                                from_number = message.get("from")
-                                text_data = message.get("text", {})
-                                user_text = (
-                                    text_data.get("body", "") or ""
-                                ).strip()
-                                break
-
-            if not user_text:
-                return (
-                    jsonify({"status": "ignored", "reason": "No valid text"}),
-                    200,
+                changes = entry.get(
+                    "changes",
+                    []
                 )
 
-            # অ্যাপ কন্টেক্সট পাস করে থ্রেড চালু করা
-            app_ctx = app.app_context()
-            threading.Thread(
-                target=process_whatsapp_message_async,
-                args=(app_ctx, from_number, user_text),
-            ).start()
+                for change in changes:
 
-            return jsonify({"status": "EVENT_RECEIVED"}), 200
+                    value = change.get(
+                        "value",
+                        {}
+                    )
+
+                    messages = value.get(
+                        "messages",
+                        []
+                    )
+
+
+                    if not messages:
+                        continue
+
+
+                    for message in messages:
+
+                        message_type = message.get(
+                            "type"
+                        )
+
+                        if message_type != "text":
+
+                            continue
+
+                        from_number = message.get(
+                            "from"
+                        )
+
+                        text_data = message.get(
+                            "text",
+                            {}
+                        )
+
+                        user_text = (
+                            text_data.get(
+                                "body",
+                                ""
+                            ) or ""
+                        ).strip()
+
+                        if (
+                            not from_number
+                            or not user_text
+                        ):
+
+                            continue
+
+
+                        processed = preprocess(
+                            user_text,
+                            source="whatsapp"
+                        )
+
+                        routed = orchestrator.route(
+                            processed
+                        )
+
+                        merged_response = merge_response(
+                            routed,
+                            output_mode="text"
+                        )
+
+
+                        if isinstance(
+                            merged_response,
+                            dict
+                        ):
+
+                            bot_reply = (
+                                merged_response.get(
+                                    "response"
+                                )
+                                or merged_response.get(
+                                    "answer"
+                                )
+                                or "দুঃখিত, এই মুহূর্তে উত্তর দিতে পারছি না।"
+                            )
+
+                        else:
+
+                            bot_reply = str(
+                                merged_response
+                            )
+
+                        bot_reply = str(
+                            bot_reply
+                        ).strip()
+
+                        if not bot_reply:
+
+                            bot_reply = (
+                                "দুঃখিত, "
+                                "এই মুহূর্তে উত্তর দিতে পারছি না।"
+                            )
+
+
+                        if (
+                            WHATSAPP_TOKEN
+                            and PHONE_NUMBER_ID
+                        ):
+
+                            whatsapp_url = (
+                                "https://graph.facebook.com/"
+                                f"v18.0/{PHONE_NUMBER_ID}/messages"
+                            )
+
+                            headers = {
+                                "Authorization": (
+                                    f"Bearer {WHATSAPP_TOKEN}"
+                                ),
+                                "Content-Type": (
+                                    "application/json"
+                                ),
+                            }
+
+                            payload = {
+                                "messaging_product": "whatsapp",
+                                "to": from_number,
+                                "type": "text",
+                                "text": {
+                                    "body": bot_reply
+                                },
+                            }
+
+                            response = requests.post(
+                                whatsapp_url,
+                                json=payload,
+                                headers=headers,
+                                timeout=10,
+                            )
+
+
+                            if not response.ok:
+
+                                print(
+                                    "WhatsApp API Error:",
+                                    response.status_code,
+                                    response.text
+                                )
+
+                        else:
+
+                            print(
+                                "WhatsApp credentials are missing."
+                            )
+
+
+            return jsonify({
+                "status": "EVENT_RECEIVED"
+            }), 200
 
         except Exception as e:
-            print("WhatsApp Webhook Error:", repr(e), flush=True)
-            return jsonify({"status": "EVENT_RECEIVED"}), 200
 
-    @app.route("/reload-data", methods=["POST"])
+            print(
+                "WhatsApp Webhook Error:",
+                repr(e)
+            )
+
+
+            return jsonify({
+                "status": "EVENT_RECEIVED"
+            }), 200
+
+    @app.route(
+        "/reload-data",
+        methods=["POST"]
+    )
     def reload_data():
-        try:
-            rule_engine.reload(Config.SAFETY_RULES_PATH)
-            retrieval_engine.reload(Config.KNOWLEDGE_BASE_PATH)
 
-            return (
-                jsonify({
-                    "status": "reloaded",
-                    "safety_rules_loaded": len(rule_engine.rules),
-                    "knowledge_base_loaded": len(retrieval_engine.entries),
-                }),
-                200,
+        try:
+
+            rule_engine.reload(
+                Config.SAFETY_RULES_PATH
             )
+
+            retrieval_engine.reload(
+                Config.KNOWLEDGE_BASE_PATH
+            )
+
+            return jsonify({
+                "status": "reloaded",
+                "safety_rules_loaded": len(
+                    rule_engine.rules
+                ),
+                "knowledge_base_loaded": len(
+                    retrieval_engine.entries
+                ),
+            }), 200
 
         except Exception as e:
-            print("Reload Error:", repr(e), flush=True)
-            return (
-                jsonify({
-                    "status": "error",
-                    "message": "Failed to reload data.",
-                }),
-                500,
+
+            print(
+                "Reload Error:",
+                repr(e)
             )
+
+            return jsonify({
+                "status": "error",
+                "message": "Failed to reload data."
+            }), 500
 
     return app
 
-
 app = create_app()
 
+
 if __name__ == "__main__":
+
     app.run(
         host="0.0.0.0",
-        port=getattr(Config, "PORT", 5000),
-        debug=getattr(Config, "DEBUG", False),
+        port=getattr(
+            Config,
+            "PORT",
+            5000
+        ),
+        debug=getattr(
+            Config,
+            "DEBUG",
+            False
+        ),
     )
